@@ -1,0 +1,83 @@
+[
+ {
+  "name": "supervisor_new_date",
+  "match": "SUPERVISOR-CALL",
+  "valid": true,
+  "extraction": {
+   "summary": "The payment was held by a system flag and has now been released for processing.",
+   "commitments": [
+    {
+     "who": "Daniel, Claims supervisor",
+     "action": "Release the reimbursement payment",
+     "by_date": "2026-09-18",
+     "quote": "It will be in the account by Friday the 18th, I have escalated it myself.",
+     "confidence": "high"
+    }
+   ],
+   "offers": [],
+   "customer_actions": []
+  }
+ },
+ {
+  "name": "invented_quote",
+  "match": "INVENTED-QUOTE",
+  "valid": true,
+  "extraction": {
+   "summary": "Status unclear.",
+   "commitments": [
+    {
+     "who": "representative",
+     "action": "Send the refund",
+     "by_date": "2026-09-30",
+     "quote": "We will absolutely refund you by the 30th.",
+     "confidence": "low"
+    }
+   ],
+   "offers": [],
+   "customer_actions": []
+  }
+ },
+ {
+  "name": "malformed",
+  "match": "MALFORMED-OUTPUT",
+  "valid": false,
+  "raw": "Sure! Here is the JSON: {\"summary\": 5, \"commitments\": [{\"who\": \"x\", \"action\": \"y\", \"by_date\": \"next week\", \"quote\": \"z\", \"confidence\": \"certain\"}], \"offers\": [], \"customer_actions\": [], \"extra\": true}"
+ },
+ {
+  "name": "insurance_first_call",
+  "match": "EXAMPLE-CLAIM-0001",
+  "valid": true,
+  "extraction": {
+   "summary": "The claim is approved and is in payment processing.",
+   "commitments": [
+    {
+     "who": "Maria, Claims",
+     "action": "Issue the reimbursement payment to the customer's bank account",
+     "by_date": "2026-09-09",
+     "quote": "You should see the payment within five business days.",
+     "confidence": "high"
+    }
+   ],
+   "offers": [],
+   "customer_actions": []
+  }
+ },
+ {
+  "name": "broadband_offer",
+  "match": "EXAMPLE-REFUND-0002",
+  "valid": true,
+  "extraction": {
+   "summary": "The refund request was reviewed and a goodwill credit is offered instead.",
+   "commitments": [],
+   "offers": [
+    {
+     "quote": "We can offer a goodwill credit of 60 dollars to the account today instead of the refund.",
+     "kind": "credit"
+    }
+   ],
+   "customer_actions": [
+    "Confirm in writing whether you accept the credit."
+   ]
+  }
+ }
+]

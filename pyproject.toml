@@ -1,0 +1,12 @@
+[project]
+name = "promisekeeper"
+version = "0.1.0"
+description = "Turn support calls and emails into a dated ledger of what a company promised you, powered by NVIDIA Nemotron on Nebius Token Factory."
+requires-python = ">=3.9"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
