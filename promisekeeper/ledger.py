@@ -29,6 +29,7 @@ def add_source(case: Dict[str, Any], kind: str, conversation_date: str, text: st
     src = {"id": new_id("src"), "kind": kind, "conversation_date": conversation_date, "added_at": now_iso(),
            "chars": len(text), "text": text, "summary": extraction.get("summary", ""), "model": model, "usage": usage or {}}
     case["sources"].append(src)
+    refresh_status(case, date.fromisoformat(conversation_date))   # an overdue promise is broken, not superseded, by a newer one
     for c in case["commitments"]:
         if c["status"] == "pending":
             c["status"] = "superseded"

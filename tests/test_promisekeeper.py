@@ -97,6 +97,18 @@ def test_ledger_marks_broken_after_grace_and_recommends_next_step(llm):
     assert case["commitments"][1]["status"] == "kept" and case["status"] == "resolved"
 
 
+def test_overdue_promise_is_broken_not_superseded_by_a_newer_one(llm):
+    case = ledger.new_case("Example Home Insurance", "Alex Example", "EXAMPLE-CLAIM-0001", "4,200 dollars")
+    ledger.add_source(case, "call", "2026-09-02", CALL, extract(llm, CALL, "2026-09-02", case["company"]), llm.model)
+    case["commitments"][0]["by_date"] = "2026-08-20"
+    ledger.add_source(case, "call", "2026-09-15", SUPERVISOR, extract(llm, SUPERVISOR, "2026-09-15", case["company"]), llm.model)
+    assert [c["status"] for c in case["commitments"]] == ["broken", "pending"]
+    case2 = ledger.new_case("X", "Y", "R", "owed")
+    ledger.add_source(case2, "call", "2026-09-02", CALL, extract(llm, CALL, "2026-09-02", "X"), llm.model)
+    ledger.add_source(case2, "call", "2026-09-03", SUPERVISOR, extract(llm, SUPERVISOR, "2026-09-03", "X"), llm.model)
+    assert [c["status"] for c in case2["commitments"]] == ["superseded", "pending"]
+
+
 def test_tavily_research_is_a_runtime_call(fake):
     t = TavilyClient("tv", fake.base_url, allow_local_fake=True)
     r = escalation_research(t, "Example Home Insurance", "insurance claim")

@@ -34,7 +34,7 @@ label{display:block;font-size:12px;color:#475569;margin-top:8px}
 .err{color:#9b1c1c;background:#fde8e8;padding:8px;border-radius:6px}.muted{color:#64748b;font-size:12px}
 pre{white-space:pre-wrap;background:#f8fafc;padding:8px;border-radius:6px;font-size:12px;max-height:300px;overflow:auto}
 </style></head><body>
-<header><h1>PromiseKeeper</h1><small>what did they promise, and did they keep it? Nemotron on Nebius Token Factory reads the call; you keep the receipts</small></header>
+<header><h1>PromiseKeeper</h1><small>what did they promise, and did they keep it? An open language model reads the call; you keep the receipts</small></header>
 <main><aside>
 <div class="card"><b>New case</b>
 <label>Company</label><input id="company" placeholder="Example Home Insurance">
@@ -59,7 +59,7 @@ let h=`<div class="card"><h2 style="margin:0 0 4px">${esc(c.company)}<span class
 <label>Conversation date</label><input id="cdate" type="date" value="${esc(c.today)}">
 <label>Source type</label><select id="kind"><option value="call">Call transcript</option><option value="chat">Chat log</option><option value="email">Email thread</option></select>
 <label>Paste the transcript, chat or email</label><textarea id="src" rows="8" placeholder="Agent: ... Representative: ..."></textarea>
-<div style="margin-top:10px"><button onclick="addSource()">Extract commitments with Nemotron</button> <button class="ghost" onclick="research()">Find where to escalate (Tavily)</button> <button class="ghost" onclick="resolveCase()">Mark resolved</button> <a style="margin-left:10px" href="/api/evidence/${encodeURIComponent(c.id)}" target="_blank">Evidence pack</a></div>
+<div style="margin-top:10px"><button onclick="addSource()">Extract commitments</button> <button class="ghost" onclick="research()">Find where to escalate (Tavily)</button> <button class="ghost" onclick="resolveCase()">Mark resolved</button> <a style="margin-left:10px" href="/api/evidence/${encodeURIComponent(c.id)}" target="_blank">Evidence pack</a></div>
 <div id="out"></div></div>`;
 h+=`<div class="card"><h3 style="margin:0 0 6px">Commitments</h3>${c.commitments.length?c.commitments.map(k=>`<div class="commit ${cls(k.status)}"><b>${esc(k.status)}</b> ${esc(k.action)} by ${esc(k.by_date||'unspecified')}<br><i>"${esc(k.quote)}"</i> (${esc(k.who)}, confidence ${esc(k.confidence)})</div>`).join(''):'<small class="muted">none yet</small>'}</div>`;
 if(c.offers.length)h+=`<div class="card"><h3 style="margin:0 0 6px">Offers (your decision, not the assistant's)</h3>${c.offers.map((o,i)=>`<div class="commit"><b>${esc(o.kind)}</b> <i>"${esc(o.quote)}"</i><br>${o.decision?`decision: ${esc(o.decision)}`:`<button class="ghost" onclick="decide(${i},'accept')">Accept</button> <button class="ghost" onclick="decide(${i},'decline')">Decline</button>`}</div>`).join('')}</div>`;
