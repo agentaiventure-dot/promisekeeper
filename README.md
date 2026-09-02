@@ -27,6 +27,15 @@ PROMISEKEEPER_ALLOW_LOCAL_FAKE=1 python3 -m promisekeeper                       
 
 Paste one of the transcripts from `fixtures/scenarios.json` (they contain the fixture trigger references) to see the full flow.
 
+## Local run with any OpenAI-compatible open model (no cloud account)
+
+```bash
+ollama pull qwen2.5:7b && ollama serve &
+PROMISEKEEPER_ALLOW_LOCAL_FAKE=1 NEBIUS_API_KEY=local NEBIUS_BASE_URL=http://127.0.0.1:11434 NEBIUS_MODEL=qwen2.5:7b python3 -m promisekeeper
+```
+
+Results on the fixture transcripts are in `docs/evaluation.md`.
+
 ## Real run (Nebius Token Factory)
 
 ```bash
