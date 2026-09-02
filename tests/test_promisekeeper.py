@@ -61,6 +61,27 @@ def test_offers_are_not_commitments(llm):
     assert r["commitments"] == [] and r["offers"][0]["kind"] == "credit" and r["customer_actions"]
 
 
+def test_explicit_day_counts_are_computed_in_code():
+    from promisekeeper.extract import date_from_quote
+    assert date_from_quote("You should see the payment within five business days.", "2026-09-02") == "2026-09-09"   # Wed + 5 business days
+    assert date_from_quote("within 10 days", "2026-09-02") == "2026-09-12"
+    assert date_from_quote("by Friday the 18th", "2026-09-15") is None
+
+
+def test_one_retry_with_feedback_then_success():
+    class Stub:
+        model = "stub"; last_usage = {}
+        def __init__(self): self.calls = []
+        def chat_json(self, system, user, schema):
+            self.calls.append(user)
+            if len(self.calls) == 1:
+                return {**GOOD_RESULT, "commitments": [{"who": "Maria", "action": "pay", "by_date": "2026-09-09", "quote": "not in the source", "confidence": "high"}]}
+            return {**GOOD_RESULT, "commitments": [{"who": "Maria", "action": "pay", "by_date": "2026-09-09", "quote": "You should see the payment within five business days.", "confidence": "high"}]}
+    st = Stub()
+    r = extract(st, CALL, "2026-09-02", "Example Home Insurance")
+    assert len(st.calls) == 2 and "rejected" in st.calls[1] and r["commitments"][0]["by_date"] == "2026-09-09"
+
+
 def test_invented_quote_is_rejected(llm):
     with pytest.raises(ValueError, match="quote not found"):
         extract(llm, "INVENTED-QUOTE: the rep said nothing specific about a date.", "2026-09-02", "X")
