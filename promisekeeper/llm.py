@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
 OFFICIAL_ORIGIN = "https://api.tokenfactory.nebius.com"
+ALLOWED_ORIGINS = (OFFICIAL_ORIGIN, "https://router.huggingface.co")   # Nebius Token Factory, or the Hugging Face inference router
 DEFAULT_MODEL = "nvidia/Llama-3_1-Nemotron-Ultra-253B-v1"
 LOOPBACK = ("127.0.0.1", "localhost", "::1")
 
@@ -25,11 +26,11 @@ def check_origin(base_url: str, allow_local_fake: bool) -> str:
     origin = f"{p.scheme}://{p.netloc}"
     if p.path not in ("", "/", "/v1", "/v1/") or p.query or p.fragment or p.username or p.password:
         raise LLMError(f"base_url must be a bare origin, got {base_url!r}")
-    if origin == OFFICIAL_ORIGIN:
+    if origin in ALLOWED_ORIGINS:
         return origin
     if allow_local_fake and p.scheme == "http" and p.hostname in LOOPBACK:
         return origin
-    raise LLMError(f"refusing to send the API key to {origin!r}; only {OFFICIAL_ORIGIN} is allowed")
+    raise LLMError(f"refusing to send the API key to {origin!r}; allowed: {', '.join(ALLOWED_ORIGINS)} or a loopback fake")
 
 
 class TokenFactoryClient:
