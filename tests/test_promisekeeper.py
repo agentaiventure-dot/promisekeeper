@@ -7,6 +7,7 @@ HERE = os.path.dirname(os.path.abspath(__file__)); ROOT = os.path.dirname(HERE)
 sys.path.insert(0, ROOT); sys.path.insert(0, os.path.join(ROOT, "fixtures"))
 
 from fake_tokenfactory import FakeServer  # noqa: E402
+from samples import CALL, OFFER, SUPERVISOR  # noqa: E402
 from promisekeeper import ledger  # noqa: E402
 from promisekeeper.extract import extract, validate  # noqa: E402
 from promisekeeper.llm import LLMError, TokenFactoryClient, parse_json_object  # noqa: E402
@@ -14,17 +15,6 @@ from promisekeeper.research import ResearchError, TavilyClient, escalation_resea
 from promisekeeper.web import serve  # noqa: E402
 
 GOOD_RESULT = {"summary": "The claim is approved and is in payment processing.", "commitments": [], "offers": [], "customer_actions": []}
-
-CALL = """Conversation about claim EXAMPLE-CLAIM-0001.
-Agent: Hello, I'm an AI assistant calling on behalf of Alex Example about claim EXAMPLE-CLAIM-0001.
-Representative (Maria, Claims): The claim is approved and is in payment processing.
-Agent: When can Alex expect the payment?
-Representative: You should see the payment within five business days."""
-OFFER = """Chat about refund EXAMPLE-REFUND-0002.
-Priya (Billing): The refund request was reviewed and a goodwill credit is offered instead.
-Priya: We can offer a goodwill credit of 60 dollars to the account today instead of the refund. Please confirm in writing whether you accept the credit."""
-SUPERVISOR = """SUPERVISOR-CALL for claim EXAMPLE-CLAIM-0001.
-Daniel (Claims supervisor): The payment was held by a system flag and has now been released for processing. It will be in the account by Friday the 18th, I have escalated it myself."""
 
 
 @pytest.fixture(scope="module")
