@@ -48,7 +48,16 @@ Standard library only; no dependencies to install. The API keys are sent only to
 
 ## Hosted demo
 
-See the Devpost submission for the live URL. Deployed as a single container (`Dockerfile`), bound to `0.0.0.0` only with `PROMISEKEEPER_PUBLIC=1` behind the platform's HTTPS proxy.
+See the Devpost submission for the live URL. Deployed on Render's free tier (no card, no account limits) as a single container (`Dockerfile` + `render.yaml`; see `docs/deploy-render.md`), bound to `0.0.0.0` only with `PROMISEKEEPER_PUBLIC=1` behind Render's HTTPS proxy.
+
+**It runs in demo mode by default**, because there is no hosted Nebius key and Render's free tier accepts no card: `PROMISEKEEPER_DEMO=1` starts the same loopback fake model server the test suite uses (`fixtures/fake_tokenfactory.py`) in-process and points the client at it, so the hosted app needs no `NEBIUS_API_KEY` at all. Concretely, this means:
+
+- The page shows a banner: "Demo mode: canned model responses for the three sample transcripts; run locally with a real model."
+- Three "Load sample" buttons create a matching case and paste one of the fixture transcripts from `fixtures/samples.py` (the same insurance-claim, broadband-refund and supervisor-callback scenarios the tests use). Clicking "Extract commitments" on one of these returns the real extraction, validation, quote-guard and date-arithmetic pipeline running against the fixture's canned model response; everything downstream of the model call (schema validation, the ledger, kept/broken status, next step, evidence pack) is the genuine app logic, not mocked.
+- Pasting anything else in demo mode is refused with a plain-language 422 error ("Demo mode only recognizes the three sample transcripts...") rather than a fabricated result, so a visitor never mistakes a canned answer for a real one.
+- `GET /healthz` reports which mode a given deployment is in: `{"mode": "demo"}` or `{"mode": "live"}`.
+
+To see PromiseKeeper read an arbitrary transcript with a real open model, either run it locally against Nebius Token Factory or Ollama (see "Real run" and "Local run" above), or flip the hosted instance's own `PROMISEKEEPER_DEMO` env var off and supply `NEBIUS_API_KEY`; steps in `docs/deploy-render.md`. The free Render tier also spins down after 15 minutes idle, so the first hit after a while looks slow (30-60s cold start); that is Render, not the model.
 
 ## What the app never does
 
@@ -63,10 +72,12 @@ promisekeeper/llm.py        Token Factory client (origin pinned, JSON-schema res
 promisekeeper/extract.py    prompt, schema, full validation, quote verification
 promisekeeper/ledger.py     cases, commitments, kept/broken status, next step, evidence pack
 promisekeeper/research.py   Tavily escalation research
-promisekeeper/web.py        one-page UI and JSON API
-fixtures/                   loopback fake of Token Factory + Tavily, five scenarios
+promisekeeper/web.py        one-page UI and JSON API, demo mode, rate limiting, case cap
+fixtures/                   loopback fake of Token Factory + Tavily, five scenarios, shared sample transcripts
 tests/                      pytest, offline
 docs/product-feedback.md    feedback on Token Factory, Nemotron and Tavily (hackathon feedback section)
+docs/deploy-render.md       exact steps to deploy the hosted demo on Render's free tier
+Dockerfile, render.yaml     container image and Render Blueprint for the hosted demo
 ```
 
 ## License
