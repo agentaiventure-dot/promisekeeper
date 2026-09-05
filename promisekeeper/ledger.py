@@ -8,6 +8,7 @@ from datetime import date, datetime, timezone
 from typing import Any, Dict, List, Optional
 
 GRACE_DAYS = 2
+MAX_CASES = 50   # a public host has no auth and no quota; cap storage growth by evicting the oldest case on insert
 
 
 def now_iso() -> str:
@@ -152,4 +153,7 @@ class Store:
                 break
         else:
             payload["cases"].append(case)
+            if len(payload["cases"]) > MAX_CASES:
+                payload["cases"].sort(key=lambda c: c["created_at"])
+                payload["cases"] = payload["cases"][-MAX_CASES:]
         self._write(payload)

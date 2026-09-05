@@ -6,9 +6,11 @@ import html
 import json
 import os
 import sys
+import threading
+import time
 from datetime import date
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
 from . import ledger
@@ -29,6 +31,29 @@ def _load_fixtures():
     import fake_tokenfactory  # type: ignore
     import samples  # type: ignore
     return fake_tokenfactory, samples
+
+
+class RateLimiter:
+    """Per-key (per-IP) token bucket, in memory. Cheap defense against one visitor hammering a free-tier host;
+    not a substitute for a real edge rate limiter, and not shared across replicas (a single free web service
+    has exactly one)."""
+
+    def __init__(self, capacity: int = 60, refill_per_sec: float = 1.0):
+        self.capacity = capacity
+        self.refill_per_sec = refill_per_sec
+        self._buckets: Dict[str, List[float]] = {}
+        self._lock = threading.Lock()
+
+    def allow(self, key: str) -> bool:
+        now = time.monotonic()
+        with self._lock:
+            tokens, last = self._buckets.get(key, [float(self.capacity), now])
+            tokens = min(self.capacity, tokens + (now - last) * self.refill_per_sec)
+            if tokens < 1:
+                self._buckets[key] = [tokens, now]
+                return False
+            self._buckets[key] = [tokens - 1, now]
+            return True
 
 PAGE = """<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PromiseKeeper</title>
 <style>
@@ -116,8 +141,10 @@ init();
 
 
 def make_handler(store: ledger.Store, llm: Optional[TokenFactoryClient], tavily: Optional[TavilyClient], public: bool,
-                  demo: bool = False, samples: Optional[list] = None, demo_markers: tuple = ()):
+                  demo: bool = False, samples: Optional[list] = None, demo_markers: tuple = (),
+                  rate_limiter: Optional[RateLimiter] = None):
     samples = samples or []
+    limiter = rate_limiter or RateLimiter()
     class H(BaseHTTPRequestHandler):
         def log_message(self, *a: Any) -> None:
             pass
@@ -136,12 +163,29 @@ def make_handler(store: ledger.Store, llm: Optional[TokenFactoryClient], tavily:
             c["today"] = date.today().isoformat()
             return c
 
+        def _client_ip(self) -> str:
+            # Trust X-Forwarded-For's first hop only when running behind Render's proxy (PROMISEKEEPER_PUBLIC=1);
+            # otherwise a client could spoof it to dodge the rate limit.
+            if public:
+                fwd = self.headers.get("X-Forwarded-For")
+                if fwd:
+                    return fwd.split(",")[0].strip()
+            return self.client_address[0]
+
+        def _rate_limited(self) -> bool:
+            if not limiter.allow(self._client_ip()):
+                self._json(429, {"error": "too many requests; slow down and try again shortly"})
+                return True
+            return False
+
         def do_GET(self) -> None:
             u = urlparse(self.path)
+            if u.path == "/healthz":  # never rate-limited: the host's own health checks must always get through
+                return self._json(200, {"ok": True, "model": llm.model if llm else None, "mode": "demo" if demo else "live"})
+            if self._rate_limited():
+                return
             if u.path == "/":
                 return self._text(200, PAGE)
-            if u.path == "/healthz":
-                return self._json(200, {"ok": True, "model": llm.model if llm else None, "mode": "demo" if demo else "live"})
             if u.path == "/api/samples":
                 if not demo:
                     return self._json(404, {"error": "not found"})
@@ -156,6 +200,8 @@ def make_handler(store: ledger.Store, llm: Optional[TokenFactoryClient], tavily:
             self._json(404, {"error": "not found"})
 
         def do_POST(self) -> None:
+            if self._rate_limited():
+                return
             if self.headers.get("X-PromiseKeeper") != "ui":
                 return self._json(403, {"error": "missing X-PromiseKeeper header"})
             u = urlparse(self.path)
@@ -224,11 +270,12 @@ def make_handler(store: ledger.Store, llm: Optional[TokenFactoryClient], tavily:
 
 
 def serve(data_dir: str, host: str, port: int, llm: Optional[TokenFactoryClient], tavily: Optional[TavilyClient],
-          demo: bool = False, samples: Optional[list] = None, demo_markers: tuple = ()) -> ThreadingHTTPServer:
+          demo: bool = False, samples: Optional[list] = None, demo_markers: tuple = (),
+          rate_limiter: Optional[RateLimiter] = None) -> ThreadingHTTPServer:
     public = os.environ.get("PROMISEKEEPER_PUBLIC") == "1"
     if host not in ("127.0.0.1", "localhost", "::1") and not public:
         raise SystemExit("set PROMISEKEEPER_PUBLIC=1 to bind beyond loopback (only behind a reverse proxy)")
-    httpd = ThreadingHTTPServer((host, port), make_handler(ledger.Store(data_dir), llm, tavily, public, demo, samples, demo_markers))
+    httpd = ThreadingHTTPServer((host, port), make_handler(ledger.Store(data_dir), llm, tavily, public, demo, samples, demo_markers, rate_limiter))
     return httpd
 
 
@@ -236,6 +283,8 @@ def main() -> None:
     host = os.environ.get("HOST", "127.0.0.1"); port = int(os.environ.get("PORT", "8800"))
     data_dir = os.environ.get("PROMISEKEEPER_DATA", os.path.join(os.getcwd(), "data"))
     demo = os.environ.get("PROMISEKEEPER_DEMO") == "1"
+    rate_limiter = RateLimiter(capacity=int(os.environ.get("PROMISEKEEPER_RATE_CAPACITY", "60")),
+                               refill_per_sec=float(os.environ.get("PROMISEKEEPER_RATE_PER_SEC", "1.0")))
     demo_fake = None
     samples: list = []
     demo_markers: tuple = ()
@@ -249,7 +298,7 @@ def main() -> None:
     else:
         llm = TokenFactoryClient.from_env() if os.environ.get("NEBIUS_API_KEY") else None
         tavily = TavilyClient.from_env() if os.environ.get("TAVILY_API_KEY") else None
-    httpd = serve(data_dir, host, port, llm, tavily, demo=demo, samples=samples, demo_markers=demo_markers)
+    httpd = serve(data_dir, host, port, llm, tavily, demo=demo, samples=samples, demo_markers=demo_markers, rate_limiter=rate_limiter)
     mode = "DEMO (canned responses, no key needed)" if demo else (llm.model if llm else "NOT CONFIGURED")
     print(f"PromiseKeeper at http://{host}:{port}  model={mode}  tavily={'on' if tavily else 'off'}")
     try:
