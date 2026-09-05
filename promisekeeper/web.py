@@ -5,6 +5,7 @@ from __future__ import annotations
 import html
 import json
 import os
+import sys
 from datetime import date
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Dict, Optional
@@ -16,6 +17,18 @@ from .llm import LLMError, TokenFactoryClient
 from .research import ResearchError, TavilyClient, escalation_research
 
 MAX_SOURCE_CHARS = 20000
+
+
+def _load_fixtures():
+    """Import fake_tokenfactory and samples from fixtures/, which sits beside the package (not inside it) so it
+    is never shipped as installable code. Mirrors the sys.path convention the test suite already uses."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    fdir = os.path.join(root, "fixtures")
+    if fdir not in sys.path:
+        sys.path.insert(0, fdir)
+    import fake_tokenfactory  # type: ignore
+    import samples  # type: ignore
+    return fake_tokenfactory, samples
 
 PAGE = """<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PromiseKeeper</title>
 <style>
@@ -33,8 +46,10 @@ label{display:block;font-size:12px;color:#475569;margin-top:8px}
 .next{background:#fff7ed;border-left:4px solid #f59e0b;padding:8px 10px;margin:8px 0}
 .err{color:#9b1c1c;background:#fde8e8;padding:8px;border-radius:6px}.muted{color:#64748b;font-size:12px}
 pre{white-space:pre-wrap;background:#f8fafc;padding:8px;border-radius:6px;font-size:12px;max-height:300px;overflow:auto}
+.banner{background:#fff4d6;color:#8a5a00;border-bottom:1px solid #f2d38b;padding:10px 24px;font-size:13px}
 </style></head><body>
 <header><h1>PromiseKeeper</h1><small>what did they promise, and did they keep it? An open language model reads the call; you keep the receipts</small></header>
+<div id="demoBanner"></div>
 <main><aside>
 <div class="card"><b>New case</b>
 <label>Company</label><input id="company" placeholder="Example Home Insurance">
@@ -42,14 +57,37 @@ pre{white-space:pre-wrap;background:#f8fafc;padding:8px;border-radius:6px;font-s
 <label>Reference</label><input id="reference" placeholder="EXAMPLE-CLAIM-0001">
 <label>What they owe you</label><input id="owed" placeholder="Reimbursement of 4,200 dollars">
 <div style="margin-top:10px"><button onclick="createCase()">Create case</button></div></div>
+<div id="samples"></div>
 <div id="list"></div></aside>
 <section id="detail"><div class="card">Create or select a case, then paste a call transcript, chat log or email thread.</div></section></main>
 <script>
-const HDR={'content-type':'application/json','x-promisekeeper':'ui'};let cases=[],sel=null;
+const HDR={'content-type':'application/json','x-promisekeeper':'ui'};let cases=[],sel=null,DEMO=false,SAMPLES=[];
 function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 function cls(s){return String(s??'').replace(/[^a-z_]/g,'')}
 async function api(p,o){const r=await fetch(p,o);return r.json()}
 async function load(){cases=await api('/api/cases');renderList();if(sel)renderDetail()}
+async function init(){
+  try{
+    const h=await api('/healthz');
+    DEMO=h.mode==='demo';
+    if(DEMO){
+      document.getElementById('demoBanner').innerHTML='<div class="banner">Demo mode: canned model responses for the three sample transcripts; run locally with a real model</div>';
+      SAMPLES=await api('/api/samples');
+      document.getElementById('samples').innerHTML='<div class="card"><b>Load sample</b><div class="muted" style="margin:4px 0 8px">Creates a matching case and pastes one of the three canned transcripts.</div>'
+        +SAMPLES.map((s,i)=>`<div style="margin-bottom:6px"><button class="ghost" onclick="loadSample(${i})">${esc(s.label)}</button></div>`).join('')+'</div>';
+    }
+  }catch(e){}
+  await load();
+}
+async function loadSample(i){
+  const s=SAMPLES[i];
+  const r=await api('/api/cases',{method:'POST',headers:HDR,body:JSON.stringify({company:s.company,customer:s.customer,reference:s.reference,what_is_owed:s.what_is_owed})});
+  if(r.error)return alert(r.error);
+  sel=r.id;await load();
+  document.getElementById('kind').value=s.kind;
+  document.getElementById('cdate').value=s.conversation_date;
+  document.getElementById('src').value=s.text;
+}
 function renderList(){document.getElementById('list').innerHTML=cases.map(c=>`<div class="card case ${sel===c.id?'active':''}" data-id="${esc(c.id)}"><b>${esc(c.company)}</b><span class="tag ${cls(c.status)}">${esc(c.status.replace(/_/g,' '))}</span><br><small>${esc(c.reference)} for ${esc(c.customer)}</small><br><small class="muted">${c.commitments.length} commitment(s), ${c.sources.length} source(s)</small></div>`).join('')}
 document.getElementById('list').addEventListener('click',e=>{const el=e.target.closest('.case');if(!el)return;sel=el.dataset.id;renderList();renderDetail()});
 function renderDetail(){const c=cases.find(x=>x.id===sel);if(!c)return;
@@ -73,11 +111,13 @@ async function addSource(){const o=document.getElementById('out');o.innerHTML='<
 async function research(){const r=await api(`/api/cases/${encodeURIComponent(sel)}/research`,{method:'POST',headers:HDR,body:'{}'});if(r.error)return alert(r.error);await load()}
 async function decide(i,d){await api(`/api/cases/${encodeURIComponent(sel)}/offers/${i}`,{method:'POST',headers:HDR,body:JSON.stringify({decision:d})});await load()}
 async function resolveCase(){await api(`/api/cases/${encodeURIComponent(sel)}/resolve`,{method:'POST',headers:HDR,body:'{}'});await load()}
-load();
+init();
 </script></body></html>"""
 
 
-def make_handler(store: ledger.Store, llm: Optional[TokenFactoryClient], tavily: Optional[TavilyClient], public: bool):
+def make_handler(store: ledger.Store, llm: Optional[TokenFactoryClient], tavily: Optional[TavilyClient], public: bool,
+                  demo: bool = False, samples: Optional[list] = None, demo_markers: tuple = ()):
+    samples = samples or []
     class H(BaseHTTPRequestHandler):
         def log_message(self, *a: Any) -> None:
             pass
@@ -101,7 +141,11 @@ def make_handler(store: ledger.Store, llm: Optional[TokenFactoryClient], tavily:
             if u.path == "/":
                 return self._text(200, PAGE)
             if u.path == "/healthz":
-                return self._json(200, {"ok": True, "model": llm.model if llm else None})
+                return self._json(200, {"ok": True, "model": llm.model if llm else None, "mode": "demo" if demo else "live"})
+            if u.path == "/api/samples":
+                if not demo:
+                    return self._json(404, {"error": "not found"})
+                return self._json(200, samples)
             if u.path == "/api/cases":
                 return self._json(200, [self._view(c) for c in store.list()])
             if u.path.startswith("/api/evidence/"):
@@ -141,6 +185,10 @@ def make_handler(store: ledger.Store, llm: Optional[TokenFactoryClient], tavily:
                         return self._json(400, {"error": "paste a transcript, chat log or email first"})
                     if len(text) > MAX_SOURCE_CHARS:
                         return self._json(400, {"error": f"source is over {MAX_SOURCE_CHARS} characters; split it"})
+                    if demo and not any(m in text for m in demo_markers):
+                        return self._json(422, {"error": "Demo mode only recognizes the three sample transcripts (use a "
+                                                          "Load sample button). Run PromiseKeeper locally with your own "
+                                                          "NEBIUS_API_KEY to extract commitments from any text."})
                     kind = body.get("kind") if body.get("kind") in ("call", "chat", "email") else "call"
                     cdate = str(body.get("conversation_date") or date.today().isoformat())
                     if llm is None:
@@ -175,28 +223,43 @@ def make_handler(store: ledger.Store, llm: Optional[TokenFactoryClient], tavily:
     return H
 
 
-def serve(data_dir: str, host: str, port: int, llm: Optional[TokenFactoryClient], tavily: Optional[TavilyClient]) -> ThreadingHTTPServer:
+def serve(data_dir: str, host: str, port: int, llm: Optional[TokenFactoryClient], tavily: Optional[TavilyClient],
+          demo: bool = False, samples: Optional[list] = None, demo_markers: tuple = ()) -> ThreadingHTTPServer:
     public = os.environ.get("PROMISEKEEPER_PUBLIC") == "1"
     if host not in ("127.0.0.1", "localhost", "::1") and not public:
         raise SystemExit("set PROMISEKEEPER_PUBLIC=1 to bind beyond loopback (only behind a reverse proxy)")
-    httpd = ThreadingHTTPServer((host, port), make_handler(ledger.Store(data_dir), llm, tavily, public))
+    httpd = ThreadingHTTPServer((host, port), make_handler(ledger.Store(data_dir), llm, tavily, public, demo, samples, demo_markers))
     return httpd
 
 
 def main() -> None:
-    from .llm import DEFAULT_MODEL
     host = os.environ.get("HOST", "127.0.0.1"); port = int(os.environ.get("PORT", "8800"))
     data_dir = os.environ.get("PROMISEKEEPER_DATA", os.path.join(os.getcwd(), "data"))
-    llm = TokenFactoryClient.from_env() if os.environ.get("NEBIUS_API_KEY") else None
-    tavily = TavilyClient.from_env() if os.environ.get("TAVILY_API_KEY") else None
-    httpd = serve(data_dir, host, port, llm, tavily)
-    print(f"PromiseKeeper at http://{host}:{port}  model={llm.model if llm else 'NOT CONFIGURED'}  tavily={'on' if tavily else 'off'}")
+    demo = os.environ.get("PROMISEKEEPER_DEMO") == "1"
+    demo_fake = None
+    samples: list = []
+    demo_markers: tuple = ()
+    if demo:
+        fake_tokenfactory, samples_mod = _load_fixtures()
+        demo_fake = fake_tokenfactory.FakeServer().start()
+        llm = TokenFactoryClient("demo-mode-no-key-needed", demo_fake.base_url, allow_local_fake=True)
+        tavily = TavilyClient("demo-mode-no-key-needed", demo_fake.base_url, allow_local_fake=True)
+        samples = samples_mod.SAMPLES
+        demo_markers = samples_mod.DEMO_MARKERS
+    else:
+        llm = TokenFactoryClient.from_env() if os.environ.get("NEBIUS_API_KEY") else None
+        tavily = TavilyClient.from_env() if os.environ.get("TAVILY_API_KEY") else None
+    httpd = serve(data_dir, host, port, llm, tavily, demo=demo, samples=samples, demo_markers=demo_markers)
+    mode = "DEMO (canned responses, no key needed)" if demo else (llm.model if llm else "NOT CONFIGURED")
+    print(f"PromiseKeeper at http://{host}:{port}  model={mode}  tavily={'on' if tavily else 'off'}")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
         httpd.server_close()
+        if demo_fake is not None:
+            demo_fake.stop()
 
 
 if __name__ == "__main__":
