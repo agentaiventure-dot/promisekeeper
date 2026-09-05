@@ -1,0 +1,34 @@
+# Render Blueprint for a free, card-free hosted PromiseKeeper.
+# Usage: push this repo to GitHub, then in the Render dashboard choose
+# New + -> Blueprint -> connect this repo. Render reads this file and creates
+# the service below. See docs/deploy-render.md for the exact click-through.
+services:
+  - type: web
+    name: promisekeeper
+    env: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /healthz
+    envVars:
+      # Demo mode ships on by default (see Dockerfile) so the service works with
+      # no secrets at all. These two are pinned here for clarity; PORT is set by
+      # Render itself and must not be overridden.
+      - key: PROMISEKEEPER_DEMO
+        value: "1"
+      - key: PROMISEKEEPER_PUBLIC
+        value: "1"
+      - key: HOST
+        value: 0.0.0.0
+      # Left blank on purpose (sync: false = set manually in the dashboard, never
+      # stored in this repo or its blueprint). Only needed to switch off demo mode;
+      # see "Going from demo mode to a real model" in docs/deploy-render.md.
+      - key: NEBIUS_API_KEY
+        sync: false
+      - key: NEBIUS_BASE_URL
+        sync: false
+      - key: NEBIUS_MODEL
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
